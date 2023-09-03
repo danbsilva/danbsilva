@@ -1,16 +1,28 @@
-### Hi there 👋
+# 👋 Olá, me chamo Danillo! Tudo bem?
 
-<!--
-**danbsilva/danbsilva** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+ Sou um desenvolvedor apaixonado por tecnologia.
 
-Here are some ideas to get you started:
+- 🌱 Atualmente, estou aprendendo [o que você está aprendendo].
+- 💼 Trabalhando como [sua profissão].
+- 📫 Como entrar em contato comigo: [seu email ou redes sociais].
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+## Tech Stack
+
+Aqui estão algumas tecnologias que estou aprendendo e usando:
+
+```json
+{
+  "linguagens": ["Python", "JavaScript", "PHP"],
+  "frameworks": {
+    "backend": ["Node.js", "Express.js", "FastAPI", "Laravel"],
+    "frontend": ["Flask", "React.js"],
+  },
+  "banco de dados": ["MongoDB", "PostgreSQL", "MySQL", "SQLServer", "SQLite"],
+  "outros": ["Docker", "Apache Kafka", "Redis", "RabbitMQ", "Elasticsearch", "Git", "GitHub", "Travis CI", "AWS", "GCP", "Heroku"]
+}
+```
+
+## Redes Sociais
+
+- [LinkedIn](https://www.linkedin.com/in/danillosilva/)
+- [AboutMe](https://about.me/danillosilva)
