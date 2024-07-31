@@ -2,7 +2,7 @@
 
  Sou um desenvolvedor apaixonado por tecnologia.
 
-- 🌱 Atualmente, estou aprendendo Microserviços
+- 🌱 Atualmente, estou me aventurando em ferramentas de IPaaS
 - 💼 Trabalhando como desenvolvedor/consultor RPA e Web
 
 - 📫 Como entrar em contato comigo: [danilloaugustobsilva@hotmail.com](danilloaugustobsilva@hotmail.com)
@@ -43,7 +43,6 @@ Aqui estão algumas tecnologias que estou aprendendo e usando:
 ![PostgreSQL](https://img.shields.io/badge/-PostgreSQL-333333?style=flat&logo=postgresql)
 ![SQLServer](https://img.shields.io/badge/-SQLServer-333333?style=flat&logo=microsoft-sql-server)
 ![Oracle](https://img.shields.io/badge/-Oracle-333333?style=flat&logo=oracle)
-![PostgreSQL](https://img.shields.io/badge/-PostgreSQL-333333?style=flat&logo=postgresql)
 
 <h3>&nbsp;Mensageria:</h3>
 
@@ -72,11 +71,17 @@ Aqui estão algumas tecnologias que estou aprendendo e usando:
 ![Insomnia](https://img.shields.io/badge/-Insomnia-333333?style=flat&logo=insomnia)
 ![Jupyter](https://img.shields.io/badge/-Jupyter-333333?style=flat&logo=jupyter)
 
+<h3>&nbsp;iPaaS:</h3>
+
+![N8N](https://img.shields.io/badge/-N8N-333333?style=flat&logo=n8n)
+![Make](https://img.shields.io/badge/-Make-333333?style=flat&logo=make)
+![DiFy](https://img.shields.io/badge/-Dify-333333?style=flat&logo=dify)
 
 <h3>&nbsp;Ferramentas de RPA:</h3>
 
 ![Automation Anywhere](https://img.shields.io/badge/-Automation%20Anywhere-333333?style=flat&logo=automation-anywhere)
 ![IBM](https://img.shields.io/badge/-IBM-333333?style=flat&logo=ibm)
+
 
 
 ## Redes Sociais
