@@ -3,9 +3,9 @@
  Sou um desenvolvedor apaixonado por tecnologia.
 
 - 🌱 Atualmente, estou me aventurando em ferramentas de IPaaS
-- 💼 Trabalhando como desenvolvedor/consultor RPA e Web
+- 💼 Trabalhando como desenvolvedor WEB e Consultor Especialista RPA
 
-- 📫 Como entrar em contato comigo: [danilloaugustobsilva@hotmail.com](danilloaugustobsilva@hotmail.com)
+- 📫 Como entrar em contato comigo: [danilloaugustobsilva@hotmail.com](danilloaugustobsilva@hotmail.com) / [(11)95116-0115](https://wa.me/5511951160115)
 
 ## Tech Stack
 
