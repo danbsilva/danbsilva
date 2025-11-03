@@ -1,0 +1,480 @@
+{
+  "name": "Agente de IA Integrado Zendesk",
+  "nodes": [
+    {
+      "parameters": {
+        "event": "create",
+        "filters": {
+          "channels": ["web", "api", "chat", "mobile", "whatsapp", "email"]
+        }
+      },
+      "id": "zendesk-trigger-new-comment",
+      "name": "Zendesk: Novo Comentário/Chat",
+      "type": "n8n-nodes-base.zendeskTrigger",
+      "typeVersion": 1,
+      "position": [240, 400],
+      "webhookId": "zendesk-new-comment",
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $json.ticket_id }}",
+              "type": "number"
+            },
+            {
+              "id": "comment-id",
+              "name": "commentId",
+              "value": "={{ $json.id }}",
+              "type": "number"
+            },
+            {
+              "id": "comment-body",
+              "name": "commentBody",
+              "value": "={{ $json.body }}",
+              "type": "string"
+            },
+            {
+              "id": "author-id",
+              "name": "authorId",
+              "value": "={{ $json.author_id }}",
+              "type": "number"
+            },
+            {
+              "id": "author-email",
+              "name": "authorEmail",
+              "value": "={{ $json.author_email || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "is-public",
+              "name": "isPublic",
+              "value": "={{ $json.public }}",
+              "type": "boolean"
+            },
+            {
+              "id": "channel",
+              "name": "channel",
+              "value": "={{ $json.channel || 'web' }}",
+              "type": "string"
+            },
+            {
+              "id": "created-at",
+              "name": "createdAt",
+              "value": "={{ $json.created_at }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-comment-data",
+      "name": "Extrair Dados do Comentário",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-is-public",
+              "leftValue": "={{ $json.isPublic }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "id": "check-not-bot",
+              "leftValue": "={{ $json.authorId }}",
+              "rightValue": "={{ $env.ZENDESK_AI_AGENT_ID }}",
+              "operator": {
+                "type": "number",
+                "operation": "notEqual",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-valid-comments",
+      "name": "Filtrar: Comentário Válido",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.ZENDESK_BASE_URL }}/api/v2/tickets/{{ $json.ticketId }}.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "fetch-ticket-info",
+      "name": "Buscar Informações do Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "Zendesk HTTP Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.ZENDESK_BASE_URL }}/api/v2/tickets/{{ $json.ticketId }}/comments.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "fetch-conversation-history",
+      "name": "Buscar Histórico da Conversa",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "Zendesk HTTP Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "merge-conversation-data",
+              "name": "conversationData",
+              "value": "={{ {\n  currentMessage: $('Extrair Dados do Comentário').item.json.commentBody,\n  ticket: $('Buscar Informações do Ticket').item.json.ticket,\n  history: $('Buscar Histórico da Conversa').item.json.comments.filter(c => c.public).slice(-10).map(c => ({\n    role: c.author_id === $env.ZENDESK_AI_AGENT_ID ? 'assistant' : 'user',\n    content: c.body,\n    timestamp: c.created_at\n  }))\n} }}",
+              "type": "object"
+            },
+            {
+              "id": "requester-info",
+              "name": "requesterInfo",
+              "value": "={{ $('Buscar Informações do Ticket').item.json.ticket.requester }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-conversation-context",
+      "name": "Preparar Contexto da Conversa",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 2000
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um assistente virtual de atendimento ao cliente especializado e amigável. Você atende clientes através do Zendesk em múltiplos canais (WhatsApp, Chat, Email).\n\nIMPORTANTE:\n- Seja sempre cordial, profissional e empático\n- Use linguagem natural e conversacional\n- Mantenha respostas concisas mas completas\n- Se o cliente estiver frustrado, demonstre empatia\n- Se não souber algo, seja honesto e ofereça ajuda\n- Mantenha o contexto da conversa anterior\n- Se o problema requer intervenção humana, informe isso claramente\n- Nunca invente informações sobre produtos ou serviços\n\nCanal atual: {{ $('Extrair Dados do Comentário').item.json.channel }}"
+            },
+            {
+              "role": "user",
+              "content": "Histórico da conversa:\n{{ JSON.stringify($json.conversationData.history.map(h => `${h.role}: ${h.content}`).join('\\n\\n')) }}\n\nCliente:\nNome: {{ $json.requesterInfo.name }}\nEmail: {{ $json.requesterInfo.email }}\n\nMensagem atual do cliente:\n{{ $json.conversationData.currentMessage }}\n\nResponda ao cliente de forma natural e útil."
+            }
+          ]
+        }
+      },
+      "id": "ai-generate-response",
+      "name": "IA: Gerar Resposta",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-escalation-keywords",
+              "leftValue": "={{ $json.choices[0].message.content.toLowerCase() }}",
+              "rightValue": "escalar|transferir|agente humano|supervisor|falar com pessoa|preciso de ajuda|não entendo|não resolveu",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-needs-escalation",
+      "name": "Verificar: Precisa Escalação?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.5,
+          "maxTokens": 1000
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Analise se a conversa precisa ser escalada para um agente humano. Considere:\n- Complexidade técnica\n- Frustração do cliente\n- Solicitação explícita de falar com pessoa\n- Problema não resolvido após várias tentativas\n\nResponda apenas: ESCALAR ou CONTINUAR"
+            },
+            {
+              "role": "user",
+              "content": "Histórico:\n{{ JSON.stringify($('Preparar Contexto da Conversa').item.json.conversationData.history) }}\n\nÚltima resposta gerada:\n{{ $('IA: Gerar Resposta').item.json.choices[0].message.content }}\n\nDecida se deve ESCALAR ou CONTINUAR."
+            }
+          ]
+        }
+      },
+      "id": "ai-classify-escalation",
+      "name": "IA: Classificar Escalação",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [2000, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "ticket",
+        "operation": "update",
+        "ticketId": "={{ $('Extrair Dados do Comentário').item.json.ticketId }}",
+        "comment": "={{ $('IA: Gerar Resposta').item.json.choices[0].message.content }}",
+        "public": true,
+        "authorId": "={{ $env.ZENDESK_AI_AGENT_ID }}"
+      },
+      "id": "send-ai-response",
+      "name": "Zendesk: Enviar Resposta IA",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [2000, 400],
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "ticket",
+        "operation": "update",
+        "ticketId": "={{ $('Extrair Dados do Comentário').item.json.ticketId }}",
+        "comment": "Este ticket foi escalado para atendimento humano. Nossa equipe entrará em contato em breve.",
+        "public": true,
+        "authorId": "={{ $env.ZENDESK_AI_AGENT_ID }}",
+        "assigneeId": "={{ $env.ZENDESK_HUMAN_AGENT_GROUP_ID }}",
+        "status": "open",
+        "priority": "high"
+      },
+      "id": "escalate-to-human",
+      "name": "Zendesk: Escalar para Humano",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [2220, 200],
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "ticket",
+        "operation": "update",
+        "ticketId": "={{ $('Extrair Dados do Comentário').item.json.ticketId }}",
+        "comment": "=[Detalhes técnicos para agente humano]\\n\\nContexto da conversa:\\n{{ JSON.stringify($('Preparar Contexto da Conversa').item.json.conversationData.history.slice(-5)) }}\\n\\nResumo: Cliente solicitou atendimento humano ou problema complexo identificado.",
+        "public": false,
+        "assigneeId": "={{ $env.ZENDESK_HUMAN_AGENT_GROUP_ID }}"
+      },
+      "id": "add-internal-note",
+      "name": "Zendesk: Adicionar Nota Interna",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [2440, 200],
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log da execução\nconst log = {\n  timestamp: new Date().toISOString(),\n  ticketId: $input.item.json.ticketId,\n  channel: $('Extrair Dados do Comentário').item.json.channel,\n  message: $('Extrair Dados do Comentário').item.json.commentBody.substring(0, 100),\n  response: $('IA: Gerar Resposta').item.json.choices[0].message.content.substring(0, 100),\n  escalated: $input.item.json.escalated || false\n};\n\nconsole.log('Agente IA - Execução:', JSON.stringify(log, null, 2));\n\nreturn $input.all();"
+      },
+      "id": "log-execution",
+      "name": "Log: Execução",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 400]
+    }
+  ],
+  "connections": {
+    "Zendesk: Novo Comentário/Chat": {
+      "main": [[{ "node": "Extrair Dados do Comentário", "type": "main", "index": 0 }]]
+    },
+    "Extrair Dados do Comentário": {
+      "main": [[{ "node": "Filtrar: Comentário Válido", "type": "main", "index": 0 }]]
+    },
+    "Filtrar: Comentário Válido": {
+      "main": [
+        [
+          {
+            "node": "Buscar Informações do Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Buscar Informações do Ticket": {
+      "main": [[{ "node": "Buscar Histórico da Conversa", "type": "main", "index": 0 }]]
+    },
+    "Buscar Histórico da Conversa": {
+      "main": [[{ "node": "Preparar Contexto da Conversa", "type": "main", "index": 0 }]]
+    },
+    "Preparar Contexto da Conversa": {
+      "main": [[{ "node": "IA: Gerar Resposta", "type": "main", "index": 0 }]]
+    },
+    "IA: Gerar Resposta": {
+      "main": [[{ "node": "Verificar: Precisa Escalação?", "type": "main", "index": 0 }]]
+    },
+    "Verificar: Precisa Escalação?": {
+      "main": [
+        [
+          {
+            "node": "IA: Classificar Escalação",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Zendesk: Enviar Resposta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA: Classificar Escalação": {
+      "main": [
+        [
+          {
+            "node": "Zendesk: Escalar para Humano",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Zendesk: Enviar Resposta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zendesk: Escalar para Humano": {
+      "main": [[{ "node": "Zendesk: Adicionar Nota Interna", "type": "main", "index": 0 }]]
+    },
+    "Zendesk: Enviar Resposta IA": {
+      "main": [[{ "node": "Log: Execução", "type": "main", "index": 0 }]]
+    },
+    "Zendesk: Adicionar Nota Interna": {
+      "main": [[{ "node": "Log: Execução", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
