@@ -1,0 +1,616 @@
+{
+  "name": "Agente IA - Simulação (Sem Zendesk)",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "trigger-simulacao",
+      "name": "Simular: Novo Comentário",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simular dados do Zendesk\nconst simulatedData = {\n  ticket_id: 123456,\n  id: 789012,\n  body: \"Olá, preciso de ajuda com meu pedido número 12345\",\n  author_id: 999999, // ID diferente do bot para simular cliente\n  author_email: \"cliente@exemplo.com\",\n  public: true,\n  channel: \"whatsapp\",\n  created_at: new Date().toISOString()\n};\n\nreturn {\n  json: simulatedData\n};"
+      },
+      "id": "mock-zendesk-data",
+      "name": "Mock: Dados do Zendesk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $json.ticket_id }}",
+              "type": "number"
+            },
+            {
+              "id": "comment-id",
+              "name": "commentId",
+              "value": "={{ $json.id }}",
+              "type": "number"
+            },
+            {
+              "id": "comment-body",
+              "name": "message",
+              "value": "={{ $json.body }}",
+              "type": "string"
+            },
+            {
+              "id": "author-id",
+              "name": "authorId",
+              "value": "={{ $json.author_id }}",
+              "type": "number"
+            },
+            {
+              "id": "is-public",
+              "name": "isPublic",
+              "value": "={{ $json.public }}",
+              "type": "boolean"
+            },
+            {
+              "id": "channel",
+              "name": "channel",
+              "value": "={{ $json.channel || 'web' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-data",
+      "name": "Extrair Dados",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-is-public",
+              "leftValue": "={{ $json.isPublic }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "id": "check-not-bot",
+              "leftValue": "={{ $json.authorId }}",
+              "rightValue": "={{ $env.ZENDESK_AI_AGENT_ID || 123456789 }}",
+              "operator": {
+                "type": "number",
+                "operation": "notEqual",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-valid",
+      "name": "Filtrar: Comentário Válido",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simular contexto do ticket e histórico\nconst ticketId = $('Extrair Dados').item.json.ticketId;\nconst channel = $('Extrair Dados').item.json.channel;\n\n// Simular dados do ticket\nconst simulatedContext = {\n  context: {\n    ticket: {\n      id: ticketId,\n      subject: \"Preciso de ajuda com meu pedido\",\n      status: \"open\",\n      priority: \"normal\",\n      channel: channel,\n      createdAt: new Date().toISOString()\n    },\n    requester: {\n      id: 999999,\n      name: \"Cliente Exemplo\",\n      email: \"cliente@exemplo.com\"\n    },\n    conversation: {\n      history: [\n        {\n          role: \"user\",\n          content: $('Extrair Dados').item.json.message,\n          timestamp: new Date().toISOString()\n        }\n      ],\n      messageCount: 1\n    }\n  },\n  ticketId: ticketId,\n  ticketInfo: {\n    id: ticketId,\n    subject: \"Preciso de ajuda com meu pedido\"\n  },\n  comments: []\n};\n\nreturn {\n  json: simulatedContext\n};"
+      },
+      "id": "mock-context",
+      "name": "Mock: Buscar Contexto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $json.ticketId }}",
+              "type": "number"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $('Extrair Dados').item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $('Mock: Buscar Contexto').item.json.context }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-classification",
+      "name": "Preparar Classificação",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um classificador de intenções para atendimento ao cliente. Analise a mensagem e classifique em uma das categorias abaixo. Responda APENAS com a categoria, sem explicações.\n\nCATEGORIAS:\n- INFO_GERAL: Pedidos de informação geral sobre produtos/serviços\n- SUPORTE_TECNICO: Problemas técnicos que precisam de solução\n- PEDIDO_STATUS: Consultas sobre status de pedidos/entregas\n- RETENÇÃO: Solicitações de cancelamento, reembolso, retenção\n- ESCALACAO: Solicitação explícita para falar com humano/supervisor\n- OUTRO: Qualquer outra intenção não categorizada\n\nFormato de resposta: Apenas o nome da categoria."
+            },
+            {
+              "role": "user",
+              "content": "Mensagem do cliente: {{ $json.message }}\n\nContexto do ticket:\nAssunto: {{ $json.context.ticket.subject }}\nCanal: {{ $json.context.ticket.channel }}\nHistórico de mensagens: {{ $json.context.conversation.messageCount }}\n\nClassifique a intenção desta mensagem."
+            }
+          ]
+        }
+      },
+      "id": "classify-intent",
+      "name": "IA: Classificar Intenção",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar resultado da classificação\nconst aiResponse = $('IA: Classificar Intenção').item.json.choices[0].message.content.trim();\nconst message = $('Preparar Classificação').item.json.message;\nconst context = $('Preparar Classificação').item.json.context;\n\n// Normalizar categoria\nconst categories = [\n  'INFO_GERAL',\n  'SUPORTE_TECNICO',\n  'PEDIDO_STATUS',\n  'RETENÇÃO',\n  'ESCALACAO',\n  'OUTRO'\n];\n\nlet intent = 'OUTRO';\nfor (const cat of categories) {\n  if (aiResponse.toUpperCase().includes(cat)) {\n    intent = cat;\n    break;\n  }\n}\n\nreturn {\n  json: {\n    intent: intent,\n    confidence: 'high',\n    rawResponse: aiResponse,\n    message: message,\n    context: context,\n    classifiedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "process-classification",
+      "name": "Processar Classificação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simular busca na Knowledge Base\nreturn {\n  json: {\n    query: $('Preparar Classificação').item.json.message,\n    articles: [], // Vazio para simulação\n    count: 0,\n    found: false\n  }\n};"
+      },
+      "id": "mock-kb",
+      "name": "Mock: Buscar KB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 500]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $('Preparar Classificação').item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $('Preparar Classificação').item.json.context }}",
+              "type": "object"
+            },
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $('Processar Classificação').item.json.intent }}",
+              "type": "string"
+            },
+            {
+              "id": "kb-context",
+              "name": "kbContext",
+              "value": "={{ $('Mock: Buscar KB').item.json.articles || null }}",
+              "type": "any"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-response",
+      "name": "Preparar Geração de Resposta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construir prompt contextual\nconst message = $json.message;\nconst context = $json.context;\nconst intent = $json.intent;\nconst kbContext = $json.kbContext;\n\n// Construir histórico formatado\nconst historyText = context.conversation.history\n  .slice(-8)\n  .map(h => `${h.role === 'assistant' ? 'Assistente' : 'Cliente'}: ${h.content}`)\n  .join('\\n\\n');\n\n// Construir contexto de KB se disponível\nlet kbText = '';\nif (kbContext && kbContext.length > 0) {\n  kbText = '\\n\\nInformações relevantes da base de conhecimento:\\n' +\n    kbContext.map(kb => `- ${kb.title}: ${kb.body.substring(0, 200)}...`).join('\\n');\n}\n\n// Prompt baseado na intenção\nconst intentPrompts = {\n  'INFO_GERAL': 'Forneça informações claras e úteis sobre nossos produtos/serviços.',\n  'SUPORTE_TECNICO': 'Ajude o cliente a resolver o problema técnico de forma passo a passo.',\n  'PEDIDO_STATUS': 'Forneça informações precisas sobre o status do pedido quando disponível.',\n  'RETENÇÃO': 'Seja empático e tente ajudar o cliente, mas não insista se ele realmente quiser cancelar.',\n  'ESCALACAO': 'Informe que está escalando para um agente humano.',\n  'OUTRO': 'Responda de forma útil e amigável.'\n};\n\nconst intentPrompt = intentPrompts[intent] || intentPrompts['OUTRO'];\n\nconst systemPrompt = `Você é um assistente virtual de atendimento ao cliente especializado, amigável e profissional.\n\nRegras importantes:\n- Seja sempre cordial, profissional e empático\n- Use linguagem natural e conversacional\n- Mantenha respostas concisas mas completas\n- Se não souber algo, seja honesto\n- Mantenha o contexto da conversa anterior\n- ${intentPrompt}\n\nCanal: ${context.ticket.channel}\nCliente: ${context.requester.name}`;\n\nconst userPrompt = `Histórico da conversa:\n${historyText}\n\n${kbText}\n\nMensagem atual do cliente:\n${message}\n\nResponda de forma natural e útil.`;\n\nreturn {\n  json: {\n    systemPrompt,\n    userPrompt,\n    message,\n    context,\n    intent,\n    kbContext\n  }\n};"
+      },
+      "id": "build-prompt",
+      "name": "Construir Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "model": "={{ $env.OPENAI_MODEL || 'gpt-4' }}",
+        "options": {
+          "temperature": "={{ parseFloat($env.OPENAI_TEMPERATURE) || 0.7 }}",
+          "maxTokens": "={{ parseInt($env.OPENAI_MAX_TOKENS) || 2000 }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "={{ $json.systemPrompt }}"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.userPrompt }}"
+            }
+          ]
+        }
+      },
+      "id": "generate-response",
+      "name": "IA: Gerar Resposta",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [2440, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar resposta gerada\nconst aiResponse = $('IA: Gerar Resposta').item.json.choices[0].message.content;\nconst context = $('Construir Prompt').item.json.context;\nconst intent = $('Construir Prompt').item.json.intent;\n\n// Limpar resposta\nlet cleanedResponse = aiResponse.trim();\n\n// Remover prefixos comuns da IA\nconst prefixes = ['Assistente:', 'Bot:', 'IA:', 'Resposta:'];\nfor (const prefix of prefixes) {\n  if (cleanedResponse.startsWith(prefix)) {\n    cleanedResponse = cleanedResponse.substring(prefix.length).trim();\n  }\n}\n\nreturn {\n  json: {\n    response: cleanedResponse,\n    rawResponse: aiResponse,\n    intent: intent,\n    context: context,\n    generatedAt: new Date().toISOString(),\n    model: $env.OPENAI_MODEL || 'gpt-4'\n  }\n};"
+      },
+      "id": "process-response",
+      "name": "Processar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $('Extrair Dados').item.json.ticketId }}",
+              "type": "number"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $('Preparar Classificação').item.json.context }}",
+              "type": "object"
+            },
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $('Processar Classificação').item.json.intent }}",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $('Preparar Classificação').item.json.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-escalation",
+      "name": "Preparar Escalação",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2000, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-intent",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "ESCALACAO",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-escalation-intent",
+      "name": "Verificar: Intenção de Escalação?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 500]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Analise se a conversa precisa ser escalada para um agente humano. Considere:\n- Complexidade técnica do problema\n- Frustração ou insatisfação do cliente\n- Solicitação explícita de falar com pessoa\n- Problema não resolvido após múltiplas tentativas\n- Sensibilidade do assunto (cancelamento, reembolso)\n- Necessidade de decisão que requer autorização humana\n\nResponda APENAS: ESCALAR ou CONTINUAR"
+            },
+            {
+              "role": "user",
+              "content": "Contexto do Ticket:\nAssunto: {{ $json.context.ticket.subject }}\nStatus: {{ $json.context.ticket.status }}\nCanal: {{ $json.context.ticket.channel }}\n\nIntenção Classificada: {{ $json.intent }}\n\nHistórico (últimas 5 mensagens):\n{{ JSON.stringify($json.context.conversation.history.slice(-5)) }}\n\nMensagem atual: {{ $json.message }}\n\nTotal de mensagens na conversa: {{ $json.context.conversation.messageCount }}\n\nDecida se deve ESCALAR ou CONTINUAR."
+            }
+          ]
+        }
+      },
+      "id": "ai-classify-escalation",
+      "name": "IA: Classificar Escalação",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [2440, 500],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar decisão de escalação\nconst aiDecision = $('IA: Classificar Escalação').item.json.choices[0].message.content.trim().toUpperCase();\nconst shouldEscalate = aiDecision.includes('ESCALAR');\n\nconst context = $json.context;\nconst ticketId = $json.ticketId;\nconst intent = $json.intent;\n\n// Determinar prioridade baseado na intenção e contexto\nlet priority = 'normal';\nif (intent === 'RETENÇÃO' || intent === 'ESCALACAO') {\n  priority = 'high';\n}\n\n// Criar resumo para nota interna\nconst summary = `Contexto da conversa:\\n` +\n  `- Assunto: ${context.ticket.subject}\\n` +\n  `- Canal: ${context.ticket.channel}\\n` +\n  `- Mensagens: ${context.conversation.messageCount}\\n` +\n  `- Intenção: ${intent}\\n` +\n  `- Última mensagem: ${$json.message.substring(0, 200)}...\\n\\n` +\n  `Razão da escalação: ${aiDecision}`;\n\nreturn {\n  json: {\n    shouldEscalate: shouldEscalate,\n    escalated: shouldEscalate,\n    priority: priority,\n    reason: aiDecision,\n    summary: summary,\n    ticketId: ticketId,\n    context: context,\n    intent: intent\n  }\n};"
+      },
+      "id": "process-escalation",
+      "name": "Processar Escalação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2660, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-escalated",
+              "leftValue": "={{ $json.escalated }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-escalated",
+      "name": "Verificar: Foi Escalado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2880, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simular envio de resposta ao Zendesk\nconst response = $('Processar Resposta').item.json.response;\nconst ticketId = $('Extrair Dados').item.json.ticketId;\n\nconsole.log('\\n=== RESPOSTA DO BOT ===');\nconsole.log(`Ticket ID: ${ticketId}`);\nconsole.log(`Resposta: ${response}`);\nconsole.log('=======================\\n');\n\nreturn {\n  json: {\n    ticketId: ticketId,\n    response: response,\n    sent: true,\n    simulated: true,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "simulate-send-response",
+      "name": "Simular: Enviar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simular escalação\nconst escalationData = $('Processar Escalação').item.json;\nconst ticketId = $('Extrair Dados').item.json.ticketId;\n\nconsole.log('\\n=== ESCALAÇÃO ===');\nconsole.log(`Ticket ID: ${ticketId}`);\nconsole.log(`Escalado: ${escalationData.escalated}`);\nconsole.log(`Razão: ${escalationData.reason}`);\nconsole.log(`Prioridade: ${escalationData.priority}`);\nconsole.log('================\\n');\n\nreturn {\n  json: {\n    ticketId: ticketId,\n    escalated: escalationData.escalated,\n    priority: escalationData.priority,\n    summary: escalationData.summary,\n    simulated: true,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "simulate-escalation",
+      "name": "Simular: Escalação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log da execução completa\nconst executionLog = {\n  timestamp: new Date().toISOString(),\n  ticketId: $('Extrair Dados').item.json.ticketId,\n  channel: $('Extrair Dados').item.json.channel,\n  intent: $('Processar Classificação').item.json.intent,\n  escalated: $('Verificar: Foi Escalado?').item.json?.escalated || false,\n  messagePreview: $('Extrair Dados').item.json.message.substring(0, 100),\n  responsePreview: $('Processar Resposta').item.json.response.substring(0, 100),\n  simulated: true\n};\n\nconsole.log('\\n=== LOG DE EXECUÇÃO ===');\nconsole.log(JSON.stringify(executionLog, null, 2));\nconsole.log('========================\\n');\n\nreturn {\n  json: executionLog\n};"
+      },
+      "id": "log-execution",
+      "name": "Log: Execução",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3100, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combine": "mergeByPosition"
+      },
+      "id": "merge-results",
+      "name": "Merge: Resultados",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [3320, 400]
+    }
+  ],
+  "connections": {
+    "Simular: Novo Comentário": {
+      "main": [[{ "node": "Mock: Dados do Zendesk", "type": "main", "index": 0 }]]
+    },
+    "Mock: Dados do Zendesk": {
+      "main": [[{ "node": "Extrair Dados", "type": "main", "index": 0 }]]
+    },
+    "Extrair Dados": {
+      "main": [[{ "node": "Filtrar: Comentário Válido", "type": "main", "index": 0 }]]
+    },
+    "Filtrar: Comentário Válido": {
+      "main": [
+        [
+          {
+            "node": "Mock: Buscar Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock: Buscar Contexto": {
+      "main": [[{ "node": "Preparar Classificação", "type": "main", "index": 0 }]]
+    },
+    "Preparar Classificação": {
+      "main": [
+        [
+          {
+            "node": "IA: Classificar Intenção",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mock: Buscar KB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA: Classificar Intenção": {
+      "main": [[{ "node": "Processar Classificação", "type": "main", "index": 0 }]]
+    },
+    "Processar Classificação": {
+      "main": [
+        [
+          {
+            "node": "Preparar Geração de Resposta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparar Escalação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock: Buscar KB": {
+      "main": [[{ "node": "Preparar Geração de Resposta", "type": "main", "index": 0 }]]
+    },
+    "Preparar Geração de Resposta": {
+      "main": [[{ "node": "Construir Prompt", "type": "main", "index": 0 }]]
+    },
+    "Construir Prompt": {
+      "main": [[{ "node": "IA: Gerar Resposta", "type": "main", "index": 0 }]]
+    },
+    "IA: Gerar Resposta": {
+      "main": [[{ "node": "Processar Resposta", "type": "main", "index": 0 }]]
+    },
+    "Processar Resposta": {
+      "main": [[{ "node": "Simular: Enviar Resposta", "type": "main", "index": 0 }]]
+    },
+    "Preparar Escalação": {
+      "main": [[{ "node": "Verificar: Intenção de Escalação?", "type": "main", "index": 0 }]]
+    },
+    "Verificar: Intenção de Escalação?": {
+      "main": [
+        [
+          {
+            "node": "IA: Classificar Escalação",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge: Resultados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA: Classificar Escalação": {
+      "main": [[{ "node": "Processar Escalação", "type": "main", "index": 0 }]]
+    },
+    "Processar Escalação": {
+      "main": [[{ "node": "Verificar: Foi Escalado?", "type": "main", "index": 0 }]]
+    },
+    "Verificar: Foi Escalado?": {
+      "main": [
+        [
+          {
+            "node": "Simular: Escalação",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Simular: Enviar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simular: Enviar Resposta": {
+      "main": [[{ "node": "Merge: Resultados", "type": "main", "index": 0 }]]
+    },
+    "Simular: Escalação": {
+      "main": [[{ "node": "Merge: Resultados", "type": "main", "index": 0 }]]
+    },
+    "Merge: Resultados": {
+      "main": [[{ "node": "Log: Execução", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
