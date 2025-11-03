@@ -1,0 +1,508 @@
+{
+  "name": "Agente de Suporte (Pós-Venda)",
+  "nodes": [
+    {
+      "parameters": {
+        "event": "create"
+      },
+      "id": "gatilho-zendesk-create",
+      "name": "Gatilho 1: Zendesk On Ticket Create",
+      "type": "n8n-nodes-base.zendeskTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "zendesk-ticket-create",
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "event": "update"
+      },
+      "id": "gatilho-zendesk-update",
+      "name": "Gatilho 2: Zendesk On Ticket Update",
+      "type": "n8n-nodes-base.zendeskTrigger",
+      "typeVersion": 1,
+      "position": [240, 500],
+      "webhookId": "zendesk-ticket-update",
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combine": "mergeByPosition"
+      },
+      "id": "merge-gatilhos",
+      "name": "Nó Merge: Juntar Gatilhos",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $json.id }}",
+              "type": "number"
+            },
+            {
+              "id": "ticket-subject",
+              "name": "ticketSubject",
+              "value": "={{ $json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "ticket-description",
+              "name": "ticketDescription",
+              "value": "={{ $json.description }}",
+              "type": "string"
+            },
+            {
+              "id": "requester-email",
+              "name": "requesterEmail",
+              "value": "={{ $json.requester.email }}",
+              "type": "string"
+            },
+            {
+              "id": "requester-id",
+              "name": "requesterId",
+              "value": "={{ $json.requester.id }}",
+              "type": "number"
+            },
+            {
+              "id": "author-id",
+              "name": "authorId",
+              "value": "={{ $json.author_id }}",
+              "type": "number"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-extrair-dados",
+      "name": "Nó Set: Extrair Dados do Ticket",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "trava-seguranca",
+              "leftValue": "={{ $json.authorId }}",
+              "rightValue": "={{ $env.ZENDESK_LIA_AUTHOR_ID }}",
+              "operator": {
+                "type": "number",
+                "operation": "notEqual",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-trava-seguranca",
+      "name": "Nó IF: Trava de Segurança",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.API_CLIENTE_URL }}/clientes/{{ $json.requesterEmail }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-buscar-cliente",
+      "name": "Nó HTTP: Buscar Cliente API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "API Cliente Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um classificador de intenções para tickets de suporte pós-venda. Classifique a intenção do ticket em uma das seguintes categorias:\n- JORNADA_PÓS_COMPRA: Cliente quer saber sobre status de pedido, rastreamento, entrega\n- RETENÇÃO_CANCELAMENTO: Cliente quer cancelar pedido, reclamar, pedir reembolso\n- NECESSITA_ESCLARECIMENTO: Precisa de mais informações do cliente (CPF, dados adicionais)\n\nResponda APENAS com uma das três opções acima, sem explicações adicionais."
+            },
+            {
+              "role": "user",
+              "content": "Ticket Subject: {{ $json.ticketSubject }}\nTicket Description: {{ $json.ticketDescription }}\nCliente Email: {{ $json.requesterEmail }}\n\nClassifique a intenção deste ticket."
+            }
+          ]
+        }
+      },
+      "id": "ia-classificar-intencao",
+      "name": "Nó IA: Classificar Intenção",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "JORNADA_PÓS_COMPRA",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": false
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "RETENÇÃO_CANCELAMENTO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": false
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.choices[0].message.content }}",
+                    "rightValue": "NECESSITA_ESCLARECIMENTO",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": false
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "output"
+        }
+      },
+      "id": "switch-roteamento",
+      "name": "Nó Switch: Roteamento por Intenção",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.API_PEDIDO_URL }}/pedidos/{{ $('Nó HTTP: Buscar Cliente API').item.json.clienteId }}/status",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-buscar-status-pedido",
+      "name": "Nó HTTP: Buscar Status Pedido API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "4",
+          "name": "API Pedido Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 1000
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um assistente de suporte pós-venda. Gere uma resposta amigável e útil sobre o status do pedido do cliente. Use os dados do pedido fornecidos e seja claro e profissional."
+            },
+            {
+              "role": "user",
+              "content": "Dados do Pedido:\n{{ JSON.stringify($json) }}\n\nTicket Original:\n{{ $('Nó Set: Extrair Dados do Ticket').item.json.ticketDescription }}\n\nGere uma resposta para o cliente sobre o status do pedido."
+            }
+          ]
+        }
+      },
+      "id": "ia-gerar-resposta-status",
+      "name": "Nó IA: Gerar Resposta de Status",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [2000, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "ticket",
+        "operation": "update",
+        "ticketId": "={{ $('Nó Set: Extrair Dados do Ticket').item.json.ticketId }}",
+        "comment": "={{ $json.choices[0].message.content }}",
+        "public": true,
+        "authorId": "={{ $env.ZENDESK_LIA_AUTHOR_ID }}"
+      },
+      "id": "zendesk-enviar-resposta-publica",
+      "name": "Nó Zendesk: Enviar Resposta Pública",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [2220, 200],
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.5,
+          "maxTokens": 800
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um assistente que gera notas internas para transbordo de tickets. Analise o ticket e gere uma nota concisa para o agente humano que vai receber o ticket, destacando o contexto e a urgência."
+            },
+            {
+              "role": "user",
+              "content": "Ticket Subject: {{ $('Nó Set: Extrair Dados do Ticket').item.json.ticketSubject }}\nTicket Description: {{ $('Nó Set: Extrair Dados do Ticket').item.json.ticketDescription }}\nCliente: {{ JSON.stringify($('Nó HTTP: Buscar Cliente API').item.json) }}\n\nGere uma nota interna para transbordo do ticket."
+            }
+          ]
+        }
+      },
+      "id": "ia-gerar-nota-interna",
+      "name": "Nó IA: Gerar Nota Interna",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [1780, 400],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "ticket",
+        "operation": "update",
+        "ticketId": "={{ $('Nó Set: Extrair Dados do Ticket').item.json.ticketId }}",
+        "comment": "={{ $json.choices[0].message.content }}",
+        "public": false,
+        "assigneeId": "={{ $env.ZENDESK_FILA_RETENCAO_ID }}",
+        "status": "new"
+      },
+      "id": "zendesk-transbordo-inteligente",
+      "name": "Nó Zendesk: Transbordo Inteligente",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [2000, 400],
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "ticket",
+        "operation": "update",
+        "ticketId": "={{ $('Nó Set: Extrair Dados do Ticket').item.json.ticketId }}",
+        "comment": "Olá! Para continuarmos com seu atendimento, precisamos confirmar alguns dados. Por favor, informe seu CPF.",
+        "public": true,
+        "authorId": "={{ $env.ZENDESK_LIA_AUTHOR_ID }}"
+      },
+      "id": "zendesk-pedir-cpf",
+      "name": "Nó Zendesk: Pedir CPF",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [1780, 600],
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gatilho 1: Zendesk On Ticket Create": {
+      "main": [[{ "node": "Nó Merge: Juntar Gatilhos", "type": "main", "index": 0 }]]
+    },
+    "Gatilho 2: Zendesk On Ticket Update": {
+      "main": [[{ "node": "Nó Merge: Juntar Gatilhos", "type": "main", "index": 1 }]]
+    },
+    "Nó Merge: Juntar Gatilhos": {
+      "main": [[{ "node": "Nó Set: Extrair Dados do Ticket", "type": "main", "index": 0 }]]
+    },
+    "Nó Set: Extrair Dados do Ticket": {
+      "main": [[{ "node": "Nó IF: Trava de Segurança", "type": "main", "index": 0 }]]
+    },
+    "Nó IF: Trava de Segurança": {
+      "main": [
+        [
+          {
+            "node": "Nó HTTP: Buscar Cliente API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Nó HTTP: Buscar Cliente API": {
+      "main": [[{ "node": "Nó IA: Classificar Intenção", "type": "main", "index": 0 }]]
+    },
+    "Nó IA: Classificar Intenção": {
+      "main": [[{ "node": "Nó Switch: Roteamento por Intenção", "type": "main", "index": 0 }]]
+    },
+    "Nó Switch: Roteamento por Intenção": {
+      "main": [
+        [
+          {
+            "node": "Nó HTTP: Buscar Status Pedido API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nó IA: Gerar Nota Interna",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nó Zendesk: Pedir CPF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nó HTTP: Buscar Status Pedido API": {
+      "main": [[{ "node": "Nó IA: Gerar Resposta de Status", "type": "main", "index": 0 }]]
+    },
+    "Nó IA: Gerar Resposta de Status": {
+      "main": [[{ "node": "Nó Zendesk: Enviar Resposta Pública", "type": "main", "index": 0 }]]
+    },
+    "Nó IA: Gerar Nota Interna": {
+      "main": [[{ "node": "Nó Zendesk: Transbordo Inteligente", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 2,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
