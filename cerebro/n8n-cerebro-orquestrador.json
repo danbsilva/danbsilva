@@ -1,0 +1,242 @@
+{
+  "name": "Cérebro: Orquestrador Completo",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "input-trigger",
+      "name": "Entrada: Mensagem do Cliente",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.message || $input.item.json.message || 'Olá, preciso de ajuda' }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $json.context || $input.item.json.context || {} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-input",
+      "name": "Preparar Entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.CEREBRO_CLASSIFICADOR_WORKFLOW_ID }}",
+        "source": {
+          "id": "{{ $json }}",
+          "name": "Dados para Classificação"
+        },
+        "options": {}
+      },
+      "id": "exec-classifier",
+      "name": "Executar: Classificador",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [680, 400],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $('Preparar Entrada').item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $('Executar: Classificador').item.json.intent }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $('Preparar Entrada').item.json.context }}",
+              "type": "object"
+            },
+            {
+              "id": "kb-context",
+              "name": "kbContext",
+              "value": "={{ $json.kbContext || null }}",
+              "type": "any"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-response",
+      "name": "Preparar Geração de Resposta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.CEREBRO_GERADOR_RESPOSTA_WORKFLOW_ID }}",
+        "source": {
+          "id": "{{ $json }}",
+          "name": "Dados para Gerar Resposta"
+        },
+        "options": {}
+      },
+      "id": "exec-generator",
+      "name": "Executar: Gerador de Resposta",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1120, 400],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $('Executar: Classificador').item.json.intent }}",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $('Preparar Entrada').item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $('Preparar Entrada').item.json.context }}",
+              "type": "object"
+            },
+            {
+              "id": "conversation-count",
+              "name": "conversationCount",
+              "value": "={{ $json.context?.conversation?.messageCount || 1 }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-escalation",
+      "name": "Preparar Análise de Escalação",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [900, 600]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.CEREBRO_ESCALACAO_WORKFLOW_ID }}",
+        "source": {
+          "id": "{{ $json }}",
+          "name": "Dados para Escalação"
+        },
+        "options": {}
+      },
+      "id": "exec-escalation",
+      "name": "Executar: Decisor de Escalação",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1120, 600],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combinar todas as decisões do cérebro\nconst classification = $('Executar: Classificador').item.json;\nconst response = $('Executar: Gerador de Resposta').item.json;\nconst escalation = $('Executar: Decisor de Escalação').item.json;\n\nconst brainOutput = {\n  success: true,\n  input: {\n    message: $('Preparar Entrada').item.json.message,\n    context: $('Preparar Entrada').item.json.context\n  },\n  classification: {\n    intent: classification.intent,\n    confidence: classification.confidence\n  },\n  response: {\n    text: response.response,\n    intent: response.intent\n  },\n  escalation: {\n    escalated: escalation.escalated,\n    priority: escalation.priority,\n    reason: escalation.reason\n  },\n  recommendation: escalation.escalated ? \n    `Escalar para humano: ${escalation.reason}` :\n    `Responder: ${response.response.substring(0, 100)}...`,\n  timestamp: new Date().toISOString()\n};\n\nreturn {\n  json: brainOutput\n};"
+      },
+      "id": "combine-brain",
+      "name": "Combinar: Decisões do Cérebro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Saída formatada final\nconst brainDecision = $('Combinar: Decisões do Cérebro').item.json;\n\nconsole.log('\\n🧠 === DECISÃO DO CÉREBRO ===');\nconsole.log(`Mensagem: ${brainDecision.input.message}`);\nconsole.log(`Intenção: ${brainDecision.classification.intent} (${brainDecision.classification.confidence})`);\nconsole.log(`Escalado: ${brainDecision.escalation.escalated ? 'SIM' : 'NÃO'}`);\nif (brainDecision.escalation.escalated) {\n  console.log(`Prioridade: ${brainDecision.escalation.priority}`);\n  console.log(`Razão: ${brainDecision.escalation.reason}`);\n} else {\n  console.log(`Resposta: ${brainDecision.response.text.substring(0, 150)}...`);\n}\nconsole.log('=============================\\n');\n\nreturn {\n  json: {\n    success: true,\n    ...brainDecision\n  }\n};"
+      },
+      "id": "format-output",
+      "name": "Formatar: Saída Final",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    }
+  ],
+  "connections": {
+    "Entrada: Mensagem do Cliente": {
+      "main": [[{ "node": "Preparar Entrada", "type": "main", "index": 0 }]]
+    },
+    "Preparar Entrada": {
+      "main": [
+        [
+          {
+            "node": "Executar: Classificador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar: Classificador": {
+      "main": [
+        [
+          {
+            "node": "Preparar Geração de Resposta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparar Análise de Escalação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Geração de Resposta": {
+      "main": [[{ "node": "Executar: Gerador de Resposta", "type": "main", "index": 0 }]]
+    },
+    "Executar: Gerador de Resposta": {
+      "main": [[{ "node": "Combinar: Decisões do Cérebro", "type": "main", "index": 0 }]]
+    },
+    "Preparar Análise de Escalação": {
+      "main": [[{ "node": "Executar: Decisor de Escalação", "type": "main", "index": 0 }]]
+    },
+    "Executar: Decisor de Escalação": {
+      "main": [[{ "node": "Combinar: Decisões do Cérebro", "type": "main", "index": 0 }]]
+    },
+    "Combinar: Decisões do Cérebro": {
+      "main": [[{ "node": "Formatar: Saída Final", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

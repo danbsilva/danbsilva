@@ -1,0 +1,147 @@
+{
+  "name": "Cérebro: Gerador de Respostas",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "input-trigger",
+      "name": "Entrada: Dados",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.message || $input.item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $json.intent || $input.item.json.intent || 'OUTRO' }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $json.context || $input.item.json.context || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "kb-context",
+              "name": "kbContext",
+              "value": "={{ $json.kbContext || $input.item.json.kbContext || null }}",
+              "type": "any"
+            },
+            {
+              "id": "personality",
+              "name": "personality",
+              "value": "={{ $json.personality || $input.item.json.personality || 'professional' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-input",
+      "name": "Preparar Entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construir prompt contextual inteligente\nconst message = $json.message;\nconst intent = $json.intent;\nconst context = $json.context || {};\nconst kbContext = $json.kbContext;\nconst personality = $json.personality;\n\n// Construir histórico formatado\nlet historyText = '';\nif (context.conversation && context.conversation.history) {\n  const history = context.conversation.history.slice(-8);\n  if (history.length > 0) {\n    historyText = history\n      .map(h => `${h.role === 'assistant' ? 'Assistente' : 'Cliente'}: ${h.content}`)\n      .join('\\n\\n');\n  }\n}\n\n// Construir contexto de KB\nlet kbText = '';\nif (kbContext && Array.isArray(kbContext) && kbContext.length > 0) {\n  kbText = '\\n\\nInformações relevantes da base de conhecimento:\\n' +\n    kbContext.map(kb => {\n      const body = typeof kb === 'string' ? kb : (kb.body || kb.content || '');\n      const title = typeof kb === 'string' ? 'Informação' : (kb.title || 'Artigo');\n      return `- ${title}: ${body.substring(0, 200)}${body.length > 200 ? '...' : ''}`;\n    }).join('\\n');\n}\n\n// Personalidades\nconst personalities = {\n  professional: {\n    tone: 'profissional e cordial',\n    style: 'formal mas amigável',\n    emoji: false\n  },\n  friendly: {\n    tone: 'amigável e descontraído',\n    style: 'conversacional',\n    emoji: true\n  },\n  technical: {\n    tone: 'preciso e técnico',\n    style: 'detalhado e objetivo',\n    emoji: false\n  }\n};\n\nconst personalityConfig = personalities[personality] || personalities.professional;\n\n// Prompts específicos por intenção\nconst intentPrompts = {\n  'INFO_GERAL': {\n    instruction: 'Forneça informações claras, úteis e completas sobre nossos produtos/serviços.',\n    focus: 'Seja detalhado mas não verboso. Priorize clareza.'\n  },\n  'SUPORTE_TECNICO': {\n    instruction: 'Ajude o cliente a resolver o problema técnico passo a passo. Seja didático.',\n    focus: 'Forneça soluções práticas e acionáveis.'\n  },\n  'PEDIDO_STATUS': {\n    instruction: 'Forneça informações precisas sobre o status do pedido quando disponível.',\n    focus: 'Se não tiver informações, seja honesto e ofereça como obter.'\n  },\n  'RETENÇÃO': {\n    instruction: 'Seja extremamente empático. Tente ajudar o cliente, mas respeite sua decisão.',\n    focus: 'Demonstre compreensão. Não seja insistente.'\n  },\n  'ESCALACAO': {\n    instruction: 'Informe que está escalando para um agente humano. Seja transparente.',\n    focus: 'Tranquilize o cliente que será atendido em breve.'\n  },\n  'OUTRO': {\n    instruction: 'Responda de forma útil e amigável ao melhor de sua capacidade.',\n    focus: 'Se não souber algo, seja honesto.'\n  }\n};\n\nconst intentConfig = intentPrompts[intent] || intentPrompts['OUTRO'];\n\n// Informações do cliente\nconst customerInfo = context.requester ? \n  `\\nCliente: ${context.requester.name || 'Cliente'}${context.requester.email ? ` (${context.requester.email})` : ''}` :\n  '';\n\nconst channelInfo = context.ticket?.channel ? `\\nCanal: ${context.ticket.channel}` : '';\n\n// Construir prompt do sistema\nconst systemPrompt = `Você é um assistente virtual de atendimento ao cliente especializado, ${personalityConfig.tone} e ${personalityConfig.style}.\n\nSUA PERSONALIDADE:\n- Seja sempre ${personalityConfig.tone}\n- Use linguagem ${personalityConfig.style}\n${personalityConfig.emoji ? '- Você pode usar emojis ocasionalmente para humanizar' : '- Não use emojis'}\n- Mantenha respostas concisas mas completas\n- Se não souber algo, seja honesto e ofereça alternativas\n- Mantenha o contexto da conversa anterior\n- Demonstre empatia quando apropriado\n\n${intentConfig.instruction}\n${intentConfig.focus}\n\n${customerInfo}${channelInfo}\n\nIMPORTANTE:\n- Nunca invente informações sobre produtos ou serviços\n- Se o problema requer dados que você não tem, seja claro sobre isso\n- Mantenha tom positivo e solucionador`;\n\n// Construir prompt do usuário\nconst userPrompt = `${historyText ? `Histórico da conversa:\\n${historyText}\\n\\n` : ''}${kbText}\nMensagem atual do cliente:\n${message}\n\n${intentConfig.instruction}\n\nResponda de forma natural, útil e ${personalityConfig.style}.`;\n\nreturn {\n  json: {\n    systemPrompt,\n    userPrompt,\n    message,\n    intent,\n    context,\n    kbContext,\n    personality: personalityConfig\n  }\n};"
+      },
+      "id": "build-prompt",
+      "name": "Construir Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "model": "={{ $env.OPENAI_MODEL || 'gpt-4' }}",
+        "options": {
+          "temperature": "={{ parseFloat($env.OPENAI_TEMPERATURE) || 0.7 }}",
+          "maxTokens": "={{ parseInt($env.OPENAI_MAX_TOKENS) || 2000 }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "={{ $json.systemPrompt }}"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.userPrompt }}"
+            }
+          ]
+        }
+      },
+      "id": "generate-response",
+      "name": "IA: Gerar Resposta",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar e limpar resposta\nconst aiResponse = $('IA: Gerar Resposta').item.json.choices[0].message.content;\nconst context = $('Construir Prompt').item.json;\n\n// Limpar resposta\nlet cleanedResponse = aiResponse.trim();\n\n// Remover prefixos comuns da IA\nconst prefixes = ['Assistente:', 'Bot:', 'IA:', 'Resposta:', 'Eu:', 'Sou o assistente virtual'];\nfor (const prefix of prefixes) {\n  const prefixLower = prefix.toLowerCase();\n  if (cleanedResponse.toLowerCase().startsWith(prefixLower)) {\n    cleanedResponse = cleanedResponse.substring(prefix.length).trim();\n  }\n}\n\n// Remover sufixos comuns\nconst suffixes = ['\\n\\nEspero ter ajudado!', '\\n\\nPosso ajudar com mais alguma coisa?'];\nfor (const suffix of suffixes) {\n  if (cleanedResponse.endsWith(suffix)) {\n    cleanedResponse = cleanedResponse.substring(0, cleanedResponse.length - suffix.length).trim();\n  }\n}\n\n// Validar comprimento\nconst maxLength = parseInt($env.OPENAI_MAX_TOKENS) || 2000;\nif (cleanedResponse.length > maxLength) {\n  cleanedResponse = cleanedResponse.substring(0, maxLength - 3) + '...';\n}\n\nreturn {\n  json: {\n    response: cleanedResponse,\n    rawResponse: aiResponse,\n    intent: context.intent,\n    context: context.context,\n    personality: context.personality,\n    generatedAt: new Date().toISOString(),\n    metadata: {\n      model: $env.OPENAI_MODEL || 'gpt-4',\n      length: cleanedResponse.length,\n      originalLength: aiResponse.length\n    }\n  }\n};"
+      },
+      "id": "process-response",
+      "name": "Processar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Formatar saída final\nconst processed = $('Processar Resposta').item.json;\n\nconst output = {\n  success: true,\n  response: processed.response,\n  intent: processed.intent,\n  timestamp: processed.generatedAt,\n  metadata: processed.metadata,\n  raw: processed\n};\n\nreturn {\n  json: output\n};"
+      },
+      "id": "format-output",
+      "name": "Formatar Saída",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Entrada: Dados": {
+      "main": [[{ "node": "Preparar Entrada", "type": "main", "index": 0 }]]
+    },
+    "Preparar Entrada": {
+      "main": [[{ "node": "Construir Prompt", "type": "main", "index": 0 }]]
+    },
+    "Construir Prompt": {
+      "main": [[{ "node": "IA: Gerar Resposta", "type": "main", "index": 0 }]]
+    },
+    "IA: Gerar Resposta": {
+      "main": [[{ "node": "Processar Resposta", "type": "main", "index": 0 }]]
+    },
+    "Processar Resposta": {
+      "main": [[{ "node": "Formatar Saída", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

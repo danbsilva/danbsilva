@@ -1,0 +1,201 @@
+{
+  "name": "Cérebro: Decisor de Escalação",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "input-trigger",
+      "name": "Entrada: Dados",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $json.intent || $input.item.json.intent }}",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.message || $input.item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $json.context || $input.item.json.context || {} }}",
+              "type": "object"
+            },
+            {
+              "id": "conversation-count",
+              "name": "conversationCount",
+              "value": "={{ $json.context?.conversation?.messageCount || $json.conversationCount || 1 }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-input",
+      "name": "Preparar Entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Análise prévia baseada em regras\nconst intent = $json.intent;\nconst message = $json.message.toUpperCase();\nconst conversationCount = $json.conversationCount;\nconst context = $json.context || {};\n\n// Palavras-chave que indicam escalação urgente\nconst urgentKeywords = [\n  'URGENTE', 'URGENTEMENTE', 'IMEDIATO', 'AGORA',\n  'SUPERVISOR', 'GERENTE', 'DIRETOR', 'RECLAMAÇÃO',\n  'PROCON', 'CONSUMIDOR', 'PROTEÇÃO', 'DIREITO'\n];\n\n// Verificar escalação obrigatória\nlet shouldEscalate = false;\nlet reason = '';\nlet priority = 'normal';\n\n// Regra 1: Intenção é ESCALACAO\nif (intent === 'ESCALACAO') {\n  shouldEscalate = true;\n  reason = 'Solicitação explícita de atendimento humano';\n  priority = 'high';\n}\n\n// Regra 2: Intenção é RETENÇÃO\nif (intent === 'RETENÇÃO') {\n  shouldEscalate = true;\n  reason = 'Solicitação de cancelamento ou reembolso';\n  priority = 'high';\n}\n\n// Regra 3: Palavras-chave urgentes\nif (!shouldEscalate && urgentKeywords.some(keyword => message.includes(keyword))) {\n  shouldEscalate = true;\n  reason = 'Mensagem contém indicadores de urgência';\n  priority = 'urgent';\n}\n\n// Regra 4: Muitas mensagens sem resolução\nif (!shouldEscalate && conversationCount >= 5) {\n  shouldEscalate = true;\n  reason = 'Conversa prolongada sem resolução clara';\n  priority = 'normal';\n}\n\n// Preparar dados para IA (se necessário)\nconst needsAI = !shouldEscalate && (intent === 'SUPORTE_TECNICO' || conversationCount >= 3);\n\nreturn {\n  json: {\n    shouldEscalate,\n    reason,\n    priority,\n    intent,\n    message,\n    conversationCount,\n    context,\n    needsAI,\n    ruleBasedDecision: !needsAI\n  }\n};"
+      },
+      "id": "pre-analysis",
+      "name": "Análise Prévia",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-needs-ai",
+              "leftValue": "={{ $json.needsAI }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-ai-needed",
+      "name": "Verificar: Precisa IA?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "model": "={{ $env.OPENAI_MODEL || 'gpt-4' }}",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 300
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um analista de atendimento ao cliente. Analise se uma conversa precisa ser escalada para um agente humano.\n\nESCALAR quando:\n- Problema complexo que requer decisão humana\n- Cliente está frustrado ou insatisfeito\n- Solicitação explícita de falar com pessoa\n- Problema técnico não resolvido após múltiplas tentativas\n- Situação sensível (cancelamento, reembolso, questões legais)\n- Necessidade de autorização ou aprovação\n- Dados específicos que você não tem acesso\n\nCONTINUAR quando:\n- Problema pode ser resolvido pelo bot\n- Cliente está satisfeito com a resposta\n- É uma consulta simples que já foi respondida\n- Bot tem todas as informações necessárias\n\nResponda APENAS: ESCALAR ou CONTINUAR"
+            },
+            {
+              "role": "user",
+              "content": "Analise se esta conversa precisa ser escalada:\n\nIntenção Classificada: {{ $json.intent }}\nMensagem: {{ $json.message }}\nTotal de mensagens: {{ $json.conversationCount }}\n\n{{ $json.context?.conversation?.history ? `\\nHistórico recente:\\n${JSON.stringify($json.context.conversation.history.slice(-3).map(h => ({role: h.role, content: h.content.substring(0, 100)})))}` : '' }}\n\nDecida: ESCALAR ou CONTINUAR?"
+            }
+          ]
+        }
+      },
+      "id": "ai-decision",
+      "name": "IA: Decisão de Escalação",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [1120, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar decisão da IA\nconst aiDecision = $('IA: Decisão de Escalação').item.json.choices[0].message.content.trim().toUpperCase();\nconst preAnalysis = $('Análise Prévia').item.json;\n\nconst shouldEscalate = aiDecision.includes('ESCALAR');\n\n// Combinar com análise prévia\nlet finalDecision = shouldEscalate;\nlet reason = preAnalysis.reason || `IA determinou: ${aiDecision}`;\nlet priority = preAnalysis.priority || 'normal';\n\n// Ajustar prioridade baseado na decisão\nif (shouldEscalate && !preAnalysis.shouldEscalate) {\n  // Se IA decidiu escalar mas regras não, verificar urgência\n  const urgentIndicators = ['URGENTE', 'IMEDIATO', 'CRÍTICO', 'IMPORTANTE'];\n  if (urgentIndicators.some(indicator => preAnalysis.message.includes(indicator))) {\n    priority = 'urgent';\n  } else if (preAnalysis.intent === 'RETENÇÃO' || preAnalysis.intent === 'ESCALACAO') {\n    priority = 'high';\n  }\n}\n\nreturn {\n  json: {\n    shouldEscalate: finalDecision,\n    escalated: finalDecision,\n    reason: reason,\n    priority: priority,\n    intent: preAnalysis.intent,\n    message: preAnalysis.message,\n    conversationCount: preAnalysis.conversationCount,\n    decisionMethod: 'ai_analysis',\n    aiDecision: aiDecision,\n    timestamp: new Date().toISOString()\n  }\n};"
+      },
+      "id": "process-ai-decision",
+      "name": "Processar Decisão IA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combinar decisões (regras + IA)\nconst preAnalysis = $('Análise Prévia').item.json;\nconst aiDecision = $('Processar Decisão IA').item.json || null;\n\n// Se análise prévia já decidiu, usar ela\nlet finalOutput;\n\nif (preAnalysis.ruleBasedDecision && preAnalysis.shouldEscalate) {\n  // Decisão baseada em regras\n  finalOutput = {\n    shouldEscalate: true,\n    escalated: true,\n    reason: preAnalysis.reason,\n    priority: preAnalysis.priority,\n    intent: preAnalysis.intent,\n    decisionMethod: 'rule_based',\n    timestamp: new Date().toISOString()\n  };\n} else if (aiDecision) {\n  // Decisão da IA\n  finalOutput = {\n    shouldEscalate: aiDecision.escalated,\n    escalated: aiDecision.escalated,\n    reason: aiDecision.reason,\n    priority: aiDecision.priority,\n    intent: aiDecision.intent,\n    decisionMethod: 'ai_analysis',\n    timestamp: aiDecision.timestamp\n  };\n} else {\n  // Não escalar\n  finalOutput = {\n    shouldEscalate: false,\n    escalated: false,\n    reason: 'Problema pode ser resolvido pelo bot',\n    priority: 'normal',\n    intent: preAnalysis.intent,\n    decisionMethod: 'rule_based',\n    timestamp: new Date().toISOString()\n  };\n}\n\nreturn {\n  json: finalOutput\n};"
+      },
+      "id": "combine-decisions",
+      "name": "Combinar Decisões",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Formatar saída final\nconst decision = $('Combinar Decisões').item.json;\n\nconst output = {\n  success: true,\n  escalated: decision.escalated,\n  shouldEscalate: decision.shouldEscalate,\n  priority: decision.priority,\n  reason: decision.reason,\n  intent: decision.intent,\n  decisionMethod: decision.decisionMethod,\n  timestamp: decision.timestamp,\n  recommendation: decision.escalated ? \n    `Escalar para atendimento humano (Prioridade: ${decision.priority})` :\n    'Continuar com atendimento automatizado'\n};\n\nreturn {\n  json: output\n};"
+      },
+      "id": "format-output",
+      "name": "Formatar Saída",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "Entrada: Dados": {
+      "main": [[{ "node": "Preparar Entrada", "type": "main", "index": 0 }]]
+    },
+    "Preparar Entrada": {
+      "main": [[{ "node": "Análise Prévia", "type": "main", "index": 0 }]]
+    },
+    "Análise Prévia": {
+      "main": [[{ "node": "Verificar: Precisa IA?", "type": "main", "index": 0 }]]
+    },
+    "Verificar: Precisa IA?": {
+      "main": [
+        [
+          {
+            "node": "IA: Decisão de Escalação",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Combinar Decisões",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA: Decisão de Escalação": {
+      "main": [[{ "node": "Processar Decisão IA", "type": "main", "index": 0 }]]
+    },
+    "Processar Decisão IA": {
+      "main": [[{ "node": "Combinar Decisões", "type": "main", "index": 0 }]]
+    },
+    "Combinar Decisões": {
+      "main": [[{ "node": "Formatar Saída", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

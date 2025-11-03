@@ -1,0 +1,116 @@
+{
+  "name": "Cérebro: Classificador de Intenções",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "input-trigger",
+      "name": "Entrada: Mensagem",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.message || $input.item.json.message || 'Olá, preciso de ajuda' }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $json.context || $input.item.json.context || {} }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-input",
+      "name": "Preparar Entrada",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "={{ $env.OPENAI_MODEL || 'gpt-4' }}",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um classificador de intenções especializado para atendimento ao cliente. Sua função é analisar mensagens e classificar a intenção do cliente.\n\nCATEGORIAS DISPONÍVEIS:\n1. INFO_GERAL - Cliente pede informações gerais sobre produtos, serviços, horários, políticas\n2. SUPORTE_TECNICO - Cliente relata problema técnico que precisa de solução\n3. PEDIDO_STATUS - Cliente quer saber status de pedido, rastreamento, entrega\n4. RETENÇÃO - Cliente quer cancelar, pedir reembolso, ou está insatisfeito\n5. ESCALACAO - Cliente solicita explicitamente falar com humano/supervisor\n6. OUTRO - Qualquer outra intenção não categorizada\n\nREGRAS:\n- Responda APENAS com o nome da categoria (ex: INFO_GERAL)\n- Seja preciso e objetivo\n- Considere o tom e urgência da mensagem\n- Se houver dúvida entre duas categorias, escolha a mais específica"
+            },
+            {
+              "role": "user",
+              "content": "Analise a seguinte mensagem e classifique a intenção:\n\nMensagem: \"{{ $json.message }}\"\n\n{{ $json.context.ticket ? `\\nContexto:\\n- Assunto do ticket: ${$json.context.ticket.subject || 'N/A'}\\n- Canal: ${$json.context.ticket.channel || 'web'}\\n- Status: ${$json.context.ticket.status || 'N/A'}` : '' }}\n\n{{ $json.context.conversation ? `\\nHistórico:\\n- Total de mensagens: ${$json.context.conversation.messageCount || 0}` : '' }}\n\nClassifique a intenção desta mensagem."
+            }
+          ]
+        }
+      },
+      "id": "classify-intent",
+      "name": "IA: Classificar Intenção",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar e normalizar classificação\nconst aiResponse = $('IA: Classificar Intenção').item.json.choices[0].message.content.trim();\nconst message = $('Preparar Entrada').item.json.message;\nconst context = $('Preparar Entrada').item.json.context;\n\n// Categorias válidas\nconst validCategories = [\n  'INFO_GERAL',\n  'SUPORTE_TECNICO',\n  'PEDIDO_STATUS',\n  'RETENÇÃO',\n  'ESCALACAO',\n  'OUTRO'\n];\n\n// Normalizar resposta\nlet intent = 'OUTRO';\nlet confidence = 'medium';\n\nconst responseUpper = aiResponse.toUpperCase();\n\n// Buscar categoria correspondente\nfor (const category of validCategories) {\n  if (responseUpper.includes(category)) {\n    intent = category;\n    // Alta confiança se resposta é exatamente a categoria\n    if (responseUpper === category || responseUpper.trim() === category) {\n      confidence = 'high';\n    } else {\n      confidence = 'medium';\n    }\n    break;\n  }\n}\n\n// Se não encontrou categoria válida, tentar mapeamento por palavras-chave\nif (intent === 'OUTRO' && confidence === 'medium') {\n  const messageUpper = message.toUpperCase();\n  \n  // Palavras-chave para cada categoria\n  const keywordMap = {\n    'PEDIDO_STATUS': ['STATUS', 'PEDIDO', 'RASTREAMENTO', 'ENTREGA', 'ONDE ESTÁ'],\n    'SUPORTE_TECNICO': ['NÃO FUNCIONA', 'ERRO', 'PROBLEMA', 'BUG', 'FALHA'],\n    'RETENÇÃO': ['CANCELAR', 'REEMBOLSO', 'DEVOLVER', 'ARREPENDIMENTO'],\n    'ESCALACAO': ['HUMANO', 'SUPERVISOR', 'ATENDENTE', 'FALAR COM', 'PESSOA'],\n    'INFO_GERAL': ['HORÁRIO', 'POLÍTICA', 'INFORMAÇÃO', 'COMO FUNCIONA', 'QUAIS SÃO']\n  };\n  \n  for (const [category, keywords] of Object.entries(keywordMap)) {\n    if (keywords.some(keyword => messageUpper.includes(keyword))) {\n      intent = category;\n      confidence = 'low';\n      break;\n    }\n  }\n}\n\nreturn {\n  json: {\n    intent: intent,\n    confidence: confidence,\n    rawResponse: aiResponse,\n    message: message,\n    context: context,\n    classifiedAt: new Date().toISOString(),\n    metadata: {\n      model: $env.OPENAI_MODEL || 'gpt-4',\n      processingTime: 'instant'\n    }\n  }\n};"
+      },
+      "id": "process-classification",
+      "name": "Processar Classificação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Saída formatada para fácil uso\nconst classification = $('Processar Classificação').item.json;\n\nconst output = {\n  success: true,\n  intent: classification.intent,\n  confidence: classification.confidence,\n  message: classification.message,\n  timestamp: classification.classifiedAt,\n  raw: classification\n};\n\nreturn {\n  json: output\n};"
+      },
+      "id": "format-output",
+      "name": "Formatar Saída",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Entrada: Mensagem": {
+      "main": [[{ "node": "Preparar Entrada", "type": "main", "index": 0 }]]
+    },
+    "Preparar Entrada": {
+      "main": [[{ "node": "IA: Classificar Intenção", "type": "main", "index": 0 }]]
+    },
+    "IA: Classificar Intenção": {
+      "main": [[{ "node": "Processar Classificação", "type": "main", "index": 0 }]]
+    },
+    "Processar Classificação": {
+      "main": [[{ "node": "Formatar Saída", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
