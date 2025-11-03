@@ -7,6 +7,24 @@
 
 - 📫 Como entrar em contato comigo: [Email](mailto:danilloaugustobsilva@hotmail.com) / [WhatsApp](https://wa.me/5511951160115) / [Instagram](https://www.instagram.com/debugandocodigo/)
 
+## 🤖 Projetos de Automação
+
+### Fluxo de Suporte Pós-Venda - N8N
+
+Workflow completo de automação de atendimento ao cliente usando N8N, Zendesk e IA (GPT-4):
+
+- **📄 [Workflow N8N](./fluxo-suporte-pos-venda.json)** - Arquivo para importação no N8N
+- **📖 [Documentação de Configuração](./CONFIGURACAO_FLUXO.md)** - Guia completo de setup e uso
+- **📊 [Diagrama Visual](./diagrama-fluxo.md)** - Visualização detalhada do fluxo
+
+**Características:**
+- ✅ Classificação automática de intenções com IA
+- 🔄 3 caminhos de roteamento inteligente
+- 🛡️ Trava de segurança anti-loop
+- 👤 Transbordo inteligente para humanos
+- 📊 Integração com APIs externas
+- ⚡ Resposta em tempo real
+
 ## Tech Stack
 
 Aqui estão algumas tecnologias que estou aprendendo e usando:
