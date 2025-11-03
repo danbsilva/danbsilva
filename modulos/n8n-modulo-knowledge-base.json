@@ -1,0 +1,111 @@
+{
+  "name": "Módulo: Buscar Knowledge Base",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "input-data",
+      "name": "Entrada: Dados",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "query",
+              "name": "query",
+              "value": "={{ $json.query || $json.message || $input.item.json.query || $input.item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "limit",
+              "name": "limit",
+              "value": "={{ $json.limit || $input.item.json.limit || 5 }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-query",
+      "name": "Preparar Query",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.ZENDESK_BASE_URL }}/api/v2/search.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "qs": {
+            "query": "type:article {{ $json.query }}",
+            "sort_by": "relevance",
+            "sort_order": "desc"
+          }
+        }
+      },
+      "id": "search-kb",
+      "name": "Buscar na Knowledge Base",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "Zendesk HTTP Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar resultados da busca\nconst searchResults = $('Buscar na Knowledge Base').item.json.results || [];\nconst limit = parseInt($('Preparar Query').item.json.limit);\nconst query = $('Preparar Query').item.json.query;\n\n// Filtrar e formatar artigos\nconst articles = searchResults\n  .filter(article => article.result_type === 'article')\n  .slice(0, limit)\n  .map(article => ({\n    id: article.id,\n    title: article.title,\n    body: article.body || article.body_snippet || '',\n    url: article.html_url || `https://${$env.ZENDESK_BASE_URL.replace('https://', '').replace('http://', '')}/hc/articles/${article.id}`,\n    relevance: article.score || 0\n  }));\n\nreturn {\n  json: {\n    query: query,\n    articles: articles,\n    count: articles.length,\n    found: articles.length > 0\n  }\n};"
+      },
+      "id": "process-results",
+      "name": "Processar Resultados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Entrada: Dados": {
+      "main": [[{ "node": "Preparar Query", "type": "main", "index": 0 }]]
+    },
+    "Preparar Query": {
+      "main": [[{ "node": "Buscar na Knowledge Base", "type": "main", "index": 0 }]]
+    },
+    "Buscar na Knowledge Base": {
+      "main": [[{ "node": "Processar Resultados", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

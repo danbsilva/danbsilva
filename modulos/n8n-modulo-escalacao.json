@@ -1,0 +1,283 @@
+{
+  "name": "Módulo: Escalação Inteligente",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "input-data",
+      "name": "Entrada: Dados",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $json.ticketId || $input.item.json.ticketId }}",
+              "type": "number"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $json.context || $input.item.json.context }}",
+              "type": "object"
+            },
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $json.intent || $input.item.json.intent }}",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.message || $input.item.json.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-escalation-data",
+      "name": "Preparar Dados",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-intent",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "ESCALACAO",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-escalation-intent",
+      "name": "Verificar: Intenção de Escalação?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Analise se a conversa precisa ser escalada para um agente humano. Considere:\n- Complexidade técnica do problema\n- Frustração ou insatisfação do cliente\n- Solicitação explícita de falar com pessoa\n- Problema não resolvido após múltiplas tentativas\n- Sensibilidade do assunto (cancelamento, reembolso)\n- Necessidade de decisão que requer autorização humana\n\nResponda APENAS: ESCALAR ou CONTINUAR"
+            },
+            {
+              "role": "user",
+              "content": "Contexto do Ticket:\nAssunto: {{ $json.context.ticket.subject }}\nStatus: {{ $json.context.ticket.status }}\nCanal: {{ $json.context.ticket.channel }}\n\nIntenção Classificada: {{ $json.intent }}\n\nHistórico (últimas 5 mensagens):\n{{ JSON.stringify($json.context.conversation.history.slice(-5)) }}\n\nMensagem atual: {{ $json.message }}\n\nTotal de mensagens na conversa: {{ $json.context.conversation.messageCount }}\n\nDecida se deve ESCALAR ou CONTINUAR."
+            }
+          ]
+        }
+      },
+      "id": "ai-classify-escalation",
+      "name": "IA: Classificar Escalação",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar decisão de escalaçãonconst aiDecision = $('IA: Classificar Escalação').item.json.choices[0].message.content.trim().toUpperCase();\nconst shouldEscalate = aiDecision.includes('ESCALAR');\n\nconst context = $json.context;\nconst ticketId = $json.ticketId;\nconst intent = $json.intent;\n\n// Determinar prioridade baseado na intenção e contexto\nlet priority = 'normal';\nif (intent === 'RETENÇÃO' || intent === 'ESCALACAO') {\n  priority = 'high';\n}\n\n// Criar resumo para nota interna\nconst summary = `Contexto da conversa:\\n` +\n  `- Assunto: ${context.ticket.subject}\\n` +\n  `- Canal: ${context.ticket.channel}\\n` +\n  `- Mensagens: ${context.conversation.messageCount}\\n` +\n  `- Intenção: ${intent}\\n` +\n  `- Última mensagem: ${$json.message.substring(0, 200)}...\\n\\n` +\n  `Razão da escalação: ${aiDecision}`;\n\nreturn {\n  json: {\n    shouldEscalate: shouldEscalate,\n    priority: priority,\n    reason: aiDecision,\n    summary: summary,\n    ticketId: ticketId,\n    context: context,\n    intent: intent\n  }\n};"
+      },
+      "id": "process-escalation",
+      "name": "Processar Escalação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "resource": "ticket",
+        "operation": "update",
+        "ticketId": "={{ $json.ticketId }}",
+        "comment": "Este ticket foi escalado para atendimento humano. Nossa equipe entrará em contato em breve.",
+        "public": true,
+        "authorId": "={{ $env.ZENDESK_AI_AGENT_ID }}",
+        "assigneeId": "={{ $env.ZENDESK_HUMAN_AGENT_GROUP_ID }}",
+        "status": "open",
+        "priority": "={{ $json.priority }}"
+      },
+      "id": "escalate-ticket",
+      "name": "Zendesk: Escalar Ticket",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [1340, 200],
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "ticket",
+        "operation": "update",
+        "ticketId": "={{ $json.ticketId }}",
+        "comment": "={{ $json.summary }}",
+        "public": false,
+        "assigneeId": "={{ $env.ZENDESK_HUMAN_AGENT_GROUP_ID }}"
+      },
+      "id": "add-internal-note",
+      "name": "Zendesk: Adicionar Nota Interna",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [1560, 200],
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "result",
+              "name": "escalated",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "result-data",
+              "name": "escalationData",
+              "value": "={{ $('Processar Escalação').item.json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "return-escalated",
+      "name": "Retornar: Escalado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "result",
+              "name": "escalated",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "reason",
+              "name": "reason",
+              "value": "Não necessita escalação no momento",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "return-not-escalated",
+      "name": "Retornar: Não Escalado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 400]
+    }
+  ],
+  "connections": {
+    "Entrada: Dados": {
+      "main": [[{ "node": "Preparar Dados", "type": "main", "index": 0 }]]
+    },
+    "Preparar Dados": {
+      "main": [[{ "node": "Verificar: Intenção de Escalação?", "type": "main", "index": 0 }]]
+    },
+    "Verificar: Intenção de Escalação?": {
+      "main": [
+        [
+          {
+            "node": "IA: Classificar Escalação",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retornar: Não Escalado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA: Classificar Escalação": {
+      "main": [[{ "node": "Processar Escalação", "type": "main", "index": 0 }]]
+    },
+    "Processar Escalação": {
+      "main": [
+        [
+          {
+            "node": "Zendesk: Escalar Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retornar: Não Escalado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zendesk: Escalar Ticket": {
+      "main": [[{ "node": "Zendesk: Adicionar Nota Interna", "type": "main", "index": 0 }]]
+    },
+    "Zendesk: Adicionar Nota Interna": {
+      "main": [[{ "node": "Retornar: Escalado", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

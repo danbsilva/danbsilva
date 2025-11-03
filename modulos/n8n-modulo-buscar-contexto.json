@@ -1,0 +1,141 @@
+{
+  "name": "Módulo: Buscar Contexto do Ticket",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "input-ticket-id",
+      "name": "Entrada: Ticket ID",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $json.ticketId || $input.item.json.ticketId }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-ticket-id",
+      "name": "Definir Ticket ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.ZENDESK_BASE_URL }}/api/v2/tickets/{{ $json.ticketId }}.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "fetch-ticket-info",
+      "name": "Buscar Informações do Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "Zendesk HTTP Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.ZENDESK_BASE_URL }}/api/v2/tickets/{{ $json.ticketId }}/comments.json?sort_order=asc",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "qs": {
+            "per_page": 50
+          }
+        }
+      },
+      "id": "fetch-comments",
+      "name": "Buscar Comentários do Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "Zendesk HTTP Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar histórico da conversa\nconst ticket = $('Buscar Informações do Ticket').item.json.ticket;\nconst comments = $('Buscar Comentários do Ticket').item.json.comments;\nconst botId = parseInt($env.ZENDESK_AI_AGENT_ID);\nconst historyLimit = parseInt($env.CONVERSATION_HISTORY_LIMIT) || 10;\n\n// Filtrar apenas comentários públicos e processar\nconst publicComments = comments\n  .filter(c => c.public === true)\n  .slice(-historyLimit)\n  .map(c => ({\n    role: c.author_id === botId ? 'assistant' : 'user',\n    content: c.body,\n    timestamp: c.created_at,\n    authorId: c.author_id\n  }));\n\n// Preparar contexto completo\nconst context = {\n  ticket: {\n    id: ticket.id,\n    subject: ticket.subject,\n    status: ticket.status,\n    priority: ticket.priority,\n    channel: ticket.via.channel || 'web',\n    createdAt: ticket.created_at\n  },\n  requester: {\n    id: ticket.requester_id,\n    name: ticket.requester?.name || 'Cliente',\n    email: ticket.requester?.email || ''\n  },\n  conversation: {\n    history: publicComments,\n    messageCount: publicComments.length,\n    lastMessage: publicComments[publicComments.length - 1] || null\n  }\n};\n\nreturn {\n  json: {\n    context: context,\n    ticketId: ticket.id,\n    ticketInfo: ticket,\n    comments: comments\n  }\n};"
+      },
+      "id": "process-context",
+      "name": "Processar Contexto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Entrada: Ticket ID": {
+      "main": [[{ "node": "Definir Ticket ID", "type": "main", "index": 0 }]]
+    },
+    "Definir Ticket ID": {
+      "main": [[{ "node": "Buscar Informações do Ticket", "type": "main", "index": 0 }]]
+    },
+    "Buscar Informações do Ticket": {
+      "main": [[{ "node": "Buscar Comentários do Ticket", "type": "main", "index": 0 }]]
+    },
+    "Buscar Comentários do Ticket": {
+      "main": [[{ "node": "Processar Contexto", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

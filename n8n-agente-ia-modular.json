@@ -1,0 +1,460 @@
+{
+  "name": "Agente IA Zendesk - Modular (Principal)",
+  "nodes": [
+    {
+      "parameters": {
+        "event": "create",
+        "filters": {
+          "channels": ["web", "api", "chat", "mobile", "whatsapp", "email"]
+        }
+      },
+      "id": "zendesk-trigger",
+      "name": "Zendesk: Novo Comentário",
+      "type": "n8n-nodes-base.zendeskTrigger",
+      "typeVersion": 1,
+      "position": [240, 400],
+      "webhookId": "zendesk-new-comment",
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $json.ticket_id }}",
+              "type": "number"
+            },
+            {
+              "id": "comment-id",
+              "name": "commentId",
+              "value": "={{ $json.id }}",
+              "type": "number"
+            },
+            {
+              "id": "comment-body",
+              "name": "message",
+              "value": "={{ $json.body }}",
+              "type": "string"
+            },
+            {
+              "id": "author-id",
+              "name": "authorId",
+              "value": "={{ $json.author_id }}",
+              "type": "number"
+            },
+            {
+              "id": "is-public",
+              "name": "isPublic",
+              "value": "={{ $json.public }}",
+              "type": "boolean"
+            },
+            {
+              "id": "channel",
+              "name": "channel",
+              "value": "={{ $json.channel || 'web' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-data",
+      "name": "Extrair Dados",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-is-public",
+              "leftValue": "={{ $json.isPublic }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            },
+            {
+              "id": "check-not-bot",
+              "leftValue": "={{ $json.authorId }}",
+              "rightValue": "={{ $env.ZENDESK_AI_AGENT_ID }}",
+              "operator": {
+                "type": "number",
+                "operation": "notEqual",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-valid",
+      "name": "Filtrar: Comentário Válido",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.MODULO_BUSCAR_CONTEXTO_WORKFLOW_ID }}",
+        "source": {
+          "id": "{{ $json.ticketId }}",
+          "name": "Ticket ID"
+        }
+      },
+      "id": "exec-buscar-contexto",
+      "name": "Executar: Buscar Contexto",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $json.ticketId }}",
+              "type": "number"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $('Executar: Buscar Contexto').item.json.context }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-classification",
+      "name": "Preparar Classificação",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.MODULO_CLASSIFICAR_INTENCAO_WORKFLOW_ID }}",
+        "source": {
+          "id": "{{ $json }}",
+          "name": "Dados para Classificação"
+        }
+      },
+      "id": "exec-classificar",
+      "name": "Executar: Classificar Intenção",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1340, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.MODULO_KB_WORKFLOW_ID }}",
+        "source": {
+          "id": "{{ $json.message }}",
+          "name": "Query"
+        }
+      },
+      "id": "exec-buscar-kb",
+      "name": "Executar: Buscar KB (Opcional)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $('Preparar Classificação').item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $('Preparar Classificação').item.json.context }}",
+              "type": "object"
+            },
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $('Executar: Classificar Intenção').item.json.intent }}",
+              "type": "string"
+            },
+            {
+              "id": "kb-context",
+              "name": "kbContext",
+              "value": "={{ $('Executar: Buscar KB (Opcional)').item.json.articles || null }}",
+              "type": "any"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-response",
+      "name": "Preparar Geração de Resposta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.MODULO_GERAR_RESPOSTA_WORKFLOW_ID }}",
+        "source": {
+          "id": "{{ $json }}",
+          "name": "Dados para Gerar Resposta"
+        }
+      },
+      "id": "exec-gerar-resposta",
+      "name": "Executar: Gerar Resposta",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2000, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ticket-id",
+              "name": "ticketId",
+              "value": "={{ $('Extrair Dados').item.json.ticketId }}",
+              "type": "number"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $('Preparar Classificação').item.json.context }}",
+              "type": "object"
+            },
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $('Executar: Classificar Intenção').item.json.intent }}",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $('Preparar Classificação').item.json.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-escalation",
+      "name": "Preparar Escalação",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1780, 500]
+    },
+    {
+      "parameters": {
+        "workflowId": "={{ $env.MODULO_ESCALACAO_WORKFLOW_ID }}",
+        "source": {
+          "id": "{{ $json }}",
+          "name": "Dados para Escalação"
+        }
+      },
+      "id": "exec-escalacao",
+      "name": "Executar: Verificar Escalação",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [2000, 500],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-escalated",
+              "leftValue": "={{ $json.escalated }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-escalated",
+      "name": "Verificar: Foi Escalado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2220, 500]
+    },
+    {
+      "parameters": {
+        "resource": "ticket",
+        "operation": "update",
+        "ticketId": "={{ $('Extrair Dados').item.json.ticketId }}",
+        "comment": "={{ $('Executar: Gerar Resposta').item.json.response }}",
+        "public": true,
+        "authorId": "={{ $env.ZENDESK_AI_AGENT_ID }}"
+      },
+      "id": "send-response",
+      "name": "Zendesk: Enviar Resposta",
+      "type": "n8n-nodes-base.zendesk",
+      "typeVersion": 1,
+      "position": [2220, 300],
+      "credentials": {
+        "zendeskApi": {
+          "id": "1",
+          "name": "Zendesk API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log da execução\nconst executionLog = {\n  timestamp: new Date().toISOString(),\n  ticketId: $('Extrair Dados').item.json.ticketId,\n  channel: $('Extrair Dados').item.json.channel,\n  intent: $('Executar: Classificar Intenção').item.json.intent,\n  escalated: $('Executar: Verificar Escalação').item.json.escalated || false,\n  messagePreview: $('Extrair Dados').item.json.message.substring(0, 100),\n  responsePreview: $('Executar: Gerar Resposta').item.json.response.substring(0, 100)\n};\n\nconsole.log('Agente IA Modular - Execução:', JSON.stringify(executionLog, null, 2));\n\nreturn {\n  json: executionLog\n};"
+      },
+      "id": "log-execution",
+      "name": "Log: Execução",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 400]
+    }
+  ],
+  "connections": {
+    "Zendesk: Novo Comentário": {
+      "main": [[{ "node": "Extrair Dados", "type": "main", "index": 0 }]]
+    },
+    "Extrair Dados": {
+      "main": [[{ "node": "Filtrar: Comentário Válido", "type": "main", "index": 0 }]]
+    },
+    "Filtrar: Comentário Válido": {
+      "main": [
+        [
+          {
+            "node": "Executar: Buscar Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Executar: Buscar Contexto": {
+      "main": [[{ "node": "Preparar Classificação", "type": "main", "index": 0 }]]
+    },
+    "Preparar Classificação": {
+      "main": [
+        [
+          {
+            "node": "Executar: Classificar Intenção",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Executar: Buscar KB (Opcional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar: Classificar Intenção": {
+      "main": [
+        [
+          {
+            "node": "Preparar Geração de Resposta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparar Escalação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Executar: Buscar KB (Opcional)": {
+      "main": [[{ "node": "Preparar Geração de Resposta", "type": "main", "index": 0 }]]
+    },
+    "Preparar Geração de Resposta": {
+      "main": [[{ "node": "Executar: Gerar Resposta", "type": "main", "index": 0 }]]
+    },
+    "Executar: Gerar Resposta": {
+      "main": [[{ "node": "Zendesk: Enviar Resposta", "type": "main", "index": 0 }]]
+    },
+    "Preparar Escalação": {
+      "main": [[{ "node": "Executar: Verificar Escalação", "type": "main", "index": 0 }]]
+    },
+    "Executar: Verificar Escalação": {
+      "main": [[{ "node": "Verificar: Foi Escalado?", "type": "main", "index": 0 }]]
+    },
+    "Verificar: Foi Escalado?": {
+      "main": [
+        [
+          {
+            "node": "Log: Execução",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Zendesk: Enviar Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zendesk: Enviar Resposta": {
+      "main": [[{ "node": "Log: Execução", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

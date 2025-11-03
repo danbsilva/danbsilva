@@ -1,0 +1,103 @@
+{
+  "name": "Módulo: Classificar Intenção",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "input-data",
+      "name": "Entrada: Dados",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.message || $input.item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $json.context || $input.item.json.context }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-data",
+      "name": "Preparar Dados",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Você é um classificador de intenções para atendimento ao cliente. Analise a mensagem e classifique em uma das categorias abaixo. Responda APENAS com a categoria, sem explicações.\n\nCATEGORIAS:\n- INFO_GERAL: Pedidos de informação geral sobre produtos/serviços\n- SUPORTE_TECNICO: Problemas técnicos que precisam de solução\n- PEDIDO_STATUS: Consultas sobre status de pedidos/entregas\n- RETENÇÃO: Solicitações de cancelamento, reembolso, retenção\n- ESCALACAO: Solicitação explícita para falar com humano/supervisor\n- OUTRO: Qualquer outra intenção não categorizada\n\nFormato de resposta: Apenas o nome da categoria."
+            },
+            {
+              "role": "user",
+              "content": "Mensagem do cliente: {{ $json.message }}\n\nContexto do ticket:\nAssunto: {{ $json.context.ticket.subject }}\nCanal: {{ $json.context.ticket.channel }}\nHistórico de mensagens: {{ $json.context.conversation.messageCount }}\n\nClassifique a intenção desta mensagem."
+            }
+          ]
+        }
+      },
+      "id": "classify-intent",
+      "name": "IA: Classificar Intenção",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar resultado da classificação\nconst aiResponse = $('IA: Classificar Intenção').item.json.choices[0].message.content.trim();\nconst message = $('Preparar Dados').item.json.message;\nconst context = $('Preparar Dados').item.json.context;\n\n// Normalizar categoria\nconst categories = [\n  'INFO_GERAL',\n  'SUPORTE_TECNICO',\n  'PEDIDO_STATUS',\n  'RETENÇÃO',\n  'ESCALACAO',\n  'OUTRO'\n];\n\nlet intent = 'OUTRO';\nfor (const cat of categories) {\n  if (aiResponse.toUpperCase().includes(cat)) {\n    intent = cat;\n    break;\n  }\n}\n\n// Adicionar confiança baseada na resposta\nconst confidence = aiResponse.toUpperCase().includes(intent) ? 'high' : 'medium';\n\nreturn {\n  json: {\n    intent: intent,\n    confidence: confidence,\n    rawResponse: aiResponse,\n    message: message,\n    context: context,\n    classifiedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "process-classification",
+      "name": "Processar Classificação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Entrada: Dados": {
+      "main": [[{ "node": "Preparar Dados", "type": "main", "index": 0 }]]
+    },
+    "Preparar Dados": {
+      "main": [[{ "node": "IA: Classificar Intenção", "type": "main", "index": 0 }]]
+    },
+    "IA: Classificar Intenção": {
+      "main": [[{ "node": "Processar Classificação", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}

@@ -1,0 +1,128 @@
+{
+  "name": "Módulo: Gerar Resposta com IA",
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "manual"
+      },
+      "id": "input-data",
+      "name": "Entrada: Dados",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "message",
+              "name": "message",
+              "value": "={{ $json.message || $input.item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "context",
+              "name": "context",
+              "value": "={{ $json.context || $input.item.json.context }}",
+              "type": "object"
+            },
+            {
+              "id": "intent",
+              "name": "intent",
+              "value": "={{ $json.intent || $input.item.json.intent || 'OUTRO' }}",
+              "type": "string"
+            },
+            {
+              "id": "kb-context",
+              "name": "kbContext",
+              "value": "={{ $json.kbContext || $input.item.json.kbContext || null }}",
+              "type": "any"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-context",
+      "name": "Preparar Contexto",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construir prompt contextual\nconst message = $json.message;\nconst context = $json.context;\nconst intent = $json.intent;\nconst kbContext = $json.kbContext;\n\n// Construir histórico formatado\nconst historyText = context.conversation.history\n  .slice(-8)\n  .map(h => `${h.role === 'assistant' ? 'Assistente' : 'Cliente'}: ${h.content}`)\n  .join('\\n\\n');\n\n// Construir contexto de KB se disponível\nlet kbText = '';\nif (kbContext && kbContext.length > 0) {\n  kbText = '\\n\\nInformações relevantes da base de conhecimento:\\n' +\n    kbContext.map(kb => `- ${kb.title}: ${kb.body.substring(0, 200)}...`).join('\\n');\n}\n\n// Prompt baseado na intenção\nconst intentPrompts = {\n  'INFO_GERAL': 'Forneça informações claras e úteis sobre nossos produtos/serviços.',\n  'SUPORTE_TECNICO': 'Ajude o cliente a resolver o problema técnico de forma passo a passo.',\n  'PEDIDO_STATUS': 'Forneça informações precisas sobre o status do pedido quando disponível.',\n  'RETENÇÃO': 'Seja empático e tente ajudar o cliente, mas não insista se ele realmente quiser cancelar.',\n  'ESCALACAO': 'Informe que está escalando para um agente humano.',\n  'OUTRO': 'Responda de forma útil e amigável.'\n};\n\nconst intentPrompt = intentPrompts[intent] || intentPrompts['OUTRO'];\n\nconst systemPrompt = `Você é um assistente virtual de atendimento ao cliente especializado, amigável e profissional.\n\nRegras importantes:\n- Seja sempre cordial, profissional e empático\n- Use linguagem natural e conversacional\n- Mantenha respostas concisas mas completas\n- Se não souber algo, seja honesto\n- Mantenha o contexto da conversa anterior\n- ${intentPrompt}\n\nCanal: ${context.ticket.channel}\nCliente: ${context.requester.name}`;\n\nconst userPrompt = `Histórico da conversa:\n${historyText}\n\n${kbText}\n\nMensagem atual do cliente:\n${message}\n\nResponda de forma natural e útil.`;\n\nreturn {\n  json: {\n    systemPrompt,\n    userPrompt,\n    message,\n    context,\n    intent,\n    kbContext\n  }\n};"
+      },
+      "id": "build-prompt",
+      "name": "Construir Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "model": "={{ $env.OPENAI_MODEL || 'gpt-4' }}",
+        "options": {
+          "temperature": "={{ parseFloat($env.OPENAI_TEMPERATURE) || 0.7 }}",
+          "maxTokens": "={{ parseInt($env.OPENAI_MAX_TOKENS) || 2000 }}"
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "={{ $json.systemPrompt }}"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.userPrompt }}"
+            }
+          ]
+        }
+      },
+      "id": "generate-response",
+      "name": "IA: Gerar Resposta",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "3",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processar resposta gerada\nconst aiResponse = $('IA: Gerar Resposta').item.json.choices[0].message.content;\nconst context = $('Construir Prompt').item.json.context;\nconst intent = $('Construir Prompt').item.json.intent;\n\n// Limpar resposta\nlet cleanedResponse = aiResponse.trim();\n\n// Remover prefixos comuns da IA\nconst prefixes = ['Assistente:', 'Bot:', 'IA:', 'Resposta:'];\nfor (const prefix of prefixes) {\n  if (cleanedResponse.startsWith(prefix)) {\n    cleanedResponse = cleanedResponse.substring(prefix.length).trim();\n  }\n}\n\nreturn {\n  json: {\n    response: cleanedResponse,\n    rawResponse: aiResponse,\n    intent: intent,\n    context: context,\n    generatedAt: new Date().toISOString(),\n    model: $env.OPENAI_MODEL || 'gpt-4'\n  }\n};"
+      },
+      "id": "process-response",
+      "name": "Processar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Entrada: Dados": {
+      "main": [[{ "node": "Preparar Contexto", "type": "main", "index": 0 }]]
+    },
+    "Preparar Contexto": {
+      "main": [[{ "node": "Construir Prompt", "type": "main", "index": 0 }]]
+    },
+    "Construir Prompt": {
+      "main": [[{ "node": "IA: Gerar Resposta", "type": "main", "index": 0 }]]
+    },
+    "IA: Gerar Resposta": {
+      "main": [[{ "node": "Processar Resposta", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+    },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
