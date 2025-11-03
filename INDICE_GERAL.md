@@ -156,10 +156,20 @@ Geralmente não necessário, mas possível:
 ### Scripts
 
 - `scripts/gerar-basic-auth.sh`: Gera Basic Auth para Zendesk
+- `SCRIPT_TESTE_INTEGRACAO.sh`: Script de teste automatizado
 
 ### Exemplos
 
 - `config-exemplo.env`: Template de configuração
+- `EXEMPLO_CONFIG_ZENDESK_WEBHOOK.json`: Exemplo de configuração de webhook
+
+## 🔗 Guias de Integração
+
+### Integração Completa
+
+- **Guia Passo a Passo**: `INTEGRACAO_PASSO_A_PASSO.md` ⭐ **COMECE AQUI**
+- **Guia Completo**: `GUIA_INTEGRACAO_COMPLETA.md` (detalhado)
+- **Configurar WhatsApp**: `CONFIGURAR_WHATSAPP_ZENDESK.md`
 
 ---
 

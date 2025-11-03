@@ -1,0 +1,45 @@
+{
+  "trigger": {
+    "title": "Enviar para n8n - Novo Comentário Público",
+    "active": true,
+    "category_id": 1,
+    "conditions": {
+      "all": [
+        {
+          "field": "comment_is_public",
+          "value": true
+        },
+        {
+          "field": "status",
+          "operator": "not_equal",
+          "value": "solved"
+        },
+        {
+          "field": "via_id",
+          "value": 1
+        }
+      ]
+    },
+    "actions": [
+      {
+        "field": "notification_webhook",
+        "value": [
+          "https://seu-n8n.exemplo.com/webhook/zendesk-new-comment",
+          "POST",
+          "application/json",
+          {
+            "ticket_id": "{{ticket.id}}",
+            "comment_id": "{{ticket.latest_comment.id}}",
+            "body": "{{ticket.latest_comment.body}}",
+            "author_id": "{{ticket.latest_comment.author_id}}",
+            "author_email": "{{ticket.latest_comment.author.email}}",
+            "public": "{{ticket.latest_comment.public}}",
+            "channel": "{{ticket.via.channel}}",
+            "created_at": "{{ticket.latest_comment.created_at}}"
+          }
+        ]
+      }
+    ]
+  },
+  "instructions": "Este trigger envia notificações para o n8n quando um comentário público é adicionado a um ticket. Configure a URL do webhook com sua URL do n8n."
+}
